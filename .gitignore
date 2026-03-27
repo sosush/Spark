@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+.env
+.env.local
+
+# React / Vite / Node.js
+node_modules/
+dist/
+.output/
+.vercel/
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+.env

@@ -34,8 +34,8 @@ export default function AddProject({ onProjectAdded }: { onProjectAdded: () => v
       } else if (data) {
         // 2. Trigger Local AI Brain (FastAPI)
         // We don't "await" this because it might take a while, 
-        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-        fetch(`${API_URL}/analyze/${data.id}`).catch(err => console.log("Brain offline"))
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+        fetch(`${backendUrl}/analyze/${data.id}`).catch(err => console.log("Brain offline"))
         
         setIsOpen(false)
         setFormData({ name: '', github_link: '', segment: 'General' })

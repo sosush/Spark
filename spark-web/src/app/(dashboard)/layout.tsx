@@ -12,8 +12,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname()
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [user, setUser] = useState<any>(null)
+  const [profile, setProfile] = useState<any>(null)
   const [mounted, setMounted] = useState(false)
   const [imgError, setImgError] = useState(false)
+  const [isLocked, setIsLocked] = useState(true) // Default true until verified
+  const [enteredPassword, setEnteredPassword] = useState('')
+  const [unlocking, setUnlocking] = useState(false)
+  const [unlockError, setUnlockError] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
@@ -22,10 +27,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) {
         setUser(session.user)
+        const { data: profileData } = await supabase.from('profiles').select('avatar_url, has_password').eq('id', session.user.id).single()
+        setProfile(profileData)
+
+        if (profileData?.has_password && !sessionStorage.getItem('spark_unlocked')) {
+          setIsLocked(true)
+        } else {
+          setIsLocked(false)
+        }
+      } else {
+        setIsLocked(false)
       }
     }
     getUser()
   }, [supabase])
+
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user?.email) return
+    setUnlocking(true)
+    setUnlockError(false)
+    const { error } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: enteredPassword
+    })
+    if (error) {
+      setUnlockError(true)
+    } else {
+      sessionStorage.setItem('spark_unlocked', 'true')
+      setIsLocked(false)
+    }
+    setUnlocking(false)
+  }
 
   const menuItems = [
     { name: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
@@ -39,10 +72,45 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen text-[var(--foreground)] flex flex-col overflow-hidden relative bg-transparent font-sans">
       <Background />
 
+      {/* PRIVACY SHIELD OVERLAY */}
+      <AnimatePresence>
+        {isLocked && mounted && profile?.has_password && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-2xl"
+          >
+            <div className="ethereal-island p-12 w-full max-w-md relative overflow-hidden text-center">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-violet-500/20 rounded-full blur-[80px] opacity-40 mix-blend-screen pointer-events-none" />
+              <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-6 backdrop-blur-md shadow-2xl relative z-10">
+                <SparkLogo size={40} className="text-violet-400" />
+              </div>
+              <h2 className="text-2xl font-medium tracking-tight text-white mb-2 relative z-10">Workspace Locked</h2>
+              <p className="text-sm text-zinc-400 font-light mb-8 relative z-10">Enter your master password to access your encrypted environment.</p>
+
+              <form onSubmit={handleUnlock} className="space-y-4 relative z-10">
+                <input
+                  type="password"
+                  value={enteredPassword}
+                  onChange={(e) => { setEnteredPassword(e.target.value); setUnlockError(false); }}
+                  placeholder="Master Password"
+                  className={`w-full bg-white/5 border ${unlockError ? 'border-red-500/50' : 'border-white/10'} rounded-full px-6 py-4 text-sm text-center text-white outline-none focus:border-violet-500/50 backdrop-blur-md transition-colors`}
+                  autoFocus
+                />
+                <button type="submit" disabled={unlocking || !enteredPassword} className="w-full py-4 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 text-violet-300 rounded-full font-medium text-sm transition-all disabled:opacity-50">
+                  {unlocking ? 'Decrypting...' : 'Unlock Workspace'}
+                </button>
+              </form>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Floating Header (Branding) */}
       <header className="fixed top-8 left-12 z-50 flex items-center gap-4">
-        <SparkLogo size={32} className="text-indigo-400" />
-        <h1 className="text-lg font-medium tracking-tight text-white smooth-text">
+        <SparkLogo size={40} className="text-indigo-400" />
+        <h1 className="text-4xl text-white font-normal relative -top-1" style={{ fontFamily: 'var(--font-caveat)' }}>
           Spark
         </h1>
       </header>
@@ -53,20 +121,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.6)]" />
           <span className="text-[10px] text-zinc-400 font-medium tracking-wide uppercase">Synced</span>
         </div>
-        
+
         <div className="flex items-center gap-4">
           <form action="/auth/signout" method="post">
             <button className="text-xs text-zinc-500 hover:text-red-400 transition-colors flex items-center gap-2 group p-2">
               <LogOut size={18} strokeWidth={1.5} className="group-hover:-translate-x-1 transition-transform" />
             </button>
           </form>
-          
+
           <Link href="/profile" className="relative group">
             <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 p-0.5 shadow-xl shadow-black/20 overflow-hidden backdrop-blur-md hover:scale-105 transition-transform active:scale-95 border-indigo-500/30">
-              {mounted && (user?.user_metadata?.avatar_url || user?.user_metadata?.picture) && !imgError ? (
-                <img 
-                  src={user.user_metadata.avatar_url || user.user_metadata.picture} 
-                  alt="Profile" 
+              {mounted && profile?.avatar_url && profile.avatar_url.includes('/avatars/') && !imgError ? (
+                <img
+                  src={profile.avatar_url}
+                  alt="Profile"
                   className="w-full h-full object-cover rounded-full"
                   onError={() => setImgError(true)}
                 />
@@ -94,7 +162,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             const isActive = pathname === item.href
             const isHovered = hoveredIndex === index
             const isNeighbor = hoveredIndex !== null && Math.abs(hoveredIndex - index) === 1
-            
+
             // Mac-OS style dock magnification logic
             let scale = 1
             let y = 0
@@ -102,8 +170,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             else if (isNeighbor) { scale = 1.15; y = -4 }
 
             return (
-              <Link 
-                key={item.name} 
+              <Link
+                key={item.name}
                 href={item.href}
                 className="relative group outline-none"
                 onMouseEnter={() => setHoveredIndex(index)}
@@ -114,15 +182,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   transition={{ type: "spring", stiffness: 300, damping: 20 }}
                   className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors duration-300 relative ${isActive ? 'bg-white/10' : 'hover:bg-white/5'}`}
                 >
-                  <item.icon 
-                    size={20} 
-                    strokeWidth={isActive ? 2 : 1.5} 
-                    className={isActive ? 'text-indigo-400' : 'text-zinc-400 group-hover:text-zinc-200'} 
+                  <item.icon
+                    size={20}
+                    strokeWidth={isActive ? 2 : 1.5}
+                    className={isActive ? 'text-indigo-400' : 'text-zinc-400 group-hover:text-zinc-200'}
                   />
-                  
+
                   {/* Active dot indicator */}
                   {isActive && (
-                    <motion.div 
+                    <motion.div
                       layoutId="activeDockDot"
                       className="absolute -bottom-1 w-1 h-1 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]"
                     />

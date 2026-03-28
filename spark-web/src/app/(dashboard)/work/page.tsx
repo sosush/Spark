@@ -39,6 +39,7 @@ export default function LabPage() {
         user_id: session.user.id,
         name: `Proto: ${idea.title}`,
         readme: idea.content,
+        repo_type: 'lab',
         domains: ["Artificial Intelligence"]
     })
     

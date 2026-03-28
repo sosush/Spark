@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Save, Plus, Trash2, User, Globe, Upload, Loader2, FileText, Eye } from 'lucide-react'
+import { Save, Plus, Trash2, User, Globe, Upload, Loader2, FileText, Eye, EyeOff, Lock } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useToast } from '@/components/Toast'
 
@@ -12,6 +12,11 @@ export default function Profile() {
   const [updating, setUpdating] = useState(false)
   const [loading, setLoading] = useState(true)
   const [imgError, setImgError] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmNewPassword, setConfirmNewPassword] = useState('')
+  const [passwordUpdating, setPasswordUpdating] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   useEffect(() => {
     async function loadIdentity() {
@@ -87,6 +92,34 @@ export default function Profile() {
     setUpdating(false)
   }
 
+  const updatePassword = async () => {
+    setPasswordUpdating(true)
+    if (!newPassword || newPassword.length < 6) {
+      toast('Password must be at least 6 characters.', 'error')
+      setPasswordUpdating(false)
+      return
+    }
+    if (newPassword !== confirmNewPassword) {
+      toast('Passwords do not match.', 'error')
+      setPasswordUpdating(false)
+      return
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    if (error) {
+      toast('Failed to update password: ' + error.message, 'error')
+    } else {
+      // Flag user as having a password gate requirement
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        await supabase.from('profiles').update({ has_password: true }).eq('id', session.user.id)
+      }
+      toast('Password updated successfully!', 'success')
+      setNewPassword('')
+      setConfirmNewPassword('')
+    }
+    setPasswordUpdating(false)
+  }
+
   if (loading) return null
 
   return (
@@ -100,7 +133,7 @@ export default function Profile() {
         
         <div className="relative group/avatar cursor-pointer z-10 shrink-0">
           <div className="w-36 h-36 rounded-full bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden transition-all duration-700 backdrop-blur-md shadow-2xl">
-             {profile.avatar_url && !imgError ? (
+             {profile.avatar_url && profile.avatar_url.includes('/avatars/') && !imgError ? (
                <img 
                  src={profile.avatar_url} 
                  className="w-full h-full object-cover group-hover/avatar:scale-110 transition-transform duration-700" 
@@ -203,6 +236,68 @@ export default function Profile() {
            </label>
         </aside>
       </div>
+
+      {/* PASSWORD SECTION */}
+      <section className="ethereal-island p-10 space-y-8 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-violet-500/10 rounded-full blur-[80px] opacity-40 mix-blend-screen pointer-events-none" />
+        
+        <div className="flex items-center gap-3 text-lg font-medium tracking-tight text-white z-10 relative">
+          <Lock size={20} className="text-violet-400" /> Set / Change Password
+        </div>
+        <p className="text-sm font-light text-zinc-400 z-10 relative">
+          Add a password to enable email-based login, or update your existing password.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 z-10 relative">
+          <div className="space-y-2 relative">
+            <label className="text-xs font-light text-zinc-400 tracking-wide">New Password</label>
+            <div className="relative">
+              <input
+                type={showNewPassword ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Min 6 characters"
+                className="w-full bg-white/5 border border-white/10 rounded-2xl pl-5 pr-12 py-4 text-sm text-white outline-none focus:border-violet-500/50 backdrop-blur-md transition-colors"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword(!showNewPassword)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"
+              >
+                {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+          <div className="space-y-2 relative">
+            <label className="text-xs font-light text-zinc-400 tracking-wide">Confirm Password</label>
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+                placeholder="Repeat password"
+                className="w-full bg-white/5 border border-white/10 rounded-2xl pl-5 pr-12 py-4 text-sm text-white outline-none focus:border-violet-500/50 backdrop-blur-md transition-colors"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"
+              >
+                {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={updatePassword}
+          disabled={passwordUpdating}
+          className="px-8 py-4 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 text-violet-300 rounded-full font-medium text-sm flex items-center gap-3 transition-all backdrop-blur-md z-10 relative disabled:opacity-50"
+        >
+          {passwordUpdating ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />}
+          Update Password
+        </button>
+      </section>
     </motion.div>
   )
 }

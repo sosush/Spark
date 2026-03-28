@@ -1,9 +1,12 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { FolderOpen, Lightbulb, Hexagon, Code2, ArrowRight } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { useSearchParams } from 'next/navigation'
+import { useToast } from '@/components/Toast'
 import Link from 'next/link'
+import GithubSync from '@/components/GithubSync'
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -18,12 +21,28 @@ const itemVariants = {
   show: { opacity: 1, y: 0, transition: { type: "tween" as const, duration: 0.8, ease: [0.25, 1, 0.25, 1] as const } }
 }
 
-export default function Dashboard() {
+const supabase = createClient()
+
+function DashboardContent() {
   const [profile, setProfile] = useState<any>(null)
   const [pinned, setPinned] = useState<any[]>([])
   const [stats, setStats] = useState({ projs: 0, ideas: 0 })
   const [hasGithub, setHasGithub] = useState(true)
-  const supabase = createClient()
+
+  const searchParams = useSearchParams()
+  const errorParam = searchParams.get('error')
+  const errorDesc = searchParams.get('description')
+  const { toast } = useToast()
+
+  useEffect(() => {
+    if (errorParam && errorDesc) {
+      if (errorDesc.includes('Multiple accounts')) {
+        toast('Account Conflict: This email is already linked to a separate identity. Please delete the extra account in your Supabase dashboard to link them.', 'error')
+      } else {
+        toast(errorDesc, 'error')
+      }
+    }
+  }, [errorParam, errorDesc, toast])
 
   useEffect(() => {
     async function loadData() {
@@ -49,7 +68,7 @@ export default function Dashboard() {
       }
     }
     loadData()
-  }, [supabase])
+  }, [])
 
   const greeting = new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 18 ? 'Good afternoon' : 'Good evening'
 
@@ -185,7 +204,10 @@ export default function Dashboard() {
               </div>
 
               <button 
-                onClick={() => supabase.auth.linkIdentity({ provider: 'github' })}
+                onClick={() => supabase.auth.signInWithOAuth({ 
+                  provider: 'github',
+                  options: { redirectTo: `${window.location.origin}/auth/callback?mode=link` }
+                })}
                 className="group relative z-10 bg-indigo-500 hover:bg-indigo-400 text-white px-8 py-4 rounded-full font-medium text-sm flex items-center gap-3 transition-all hover:scale-105 active:scale-95 shadow-[0_0_40px_rgba(99,102,241,0.2)]"
               >
                 Link Profile <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
@@ -193,7 +215,14 @@ export default function Dashboard() {
            </div>
         </motion.section>
       )}
+      
+      {/* GitHub Sync Modal for new users */}
+      <GithubSync />
 
     </motion.div>
   )
+}
+
+export default function Dashboard() {
+  return <Suspense><DashboardContent /></Suspense>
 }

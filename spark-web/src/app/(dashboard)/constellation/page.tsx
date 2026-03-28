@@ -252,6 +252,19 @@ export default function ConstellationPage() {
             <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">{filter} PROJECTS ACTIVE</p>
           </div>
 
+          {/* Synergy Mode overlay banner */}
+          <AnimatePresence>
+            {synergyMode && (
+              <motion.div initial={{ y: -50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -50, opacity: 0 }} className="absolute top-8 left-1/2 -translate-x-1/2 z-50">
+                <div className="ethereal-pill px-8 py-3 bg-amber-500/20 border-amber-500/30 backdrop-blur-md flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></div>
+                  <span className="text-amber-200 font-bold text-[10px] tracking-[0.2em] uppercase">Select exactly two nodes to collide ({synergyNodes.length}/2)</span>
+                  <button onClick={() => { setSynergyMode(false); setSynergyNodes([]) }} className="ml-4 text-amber-200/50 hover:text-amber-200 transition-colors"><X size={16}/></button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 z-40">
             <button onClick={() => setShowBrainstorm(true)} className="px-8 py-4 bg-white/5 border border-white/10 text-white rounded-full font-medium text-[11px] uppercase tracking-widest flex items-center gap-3 backdrop-blur-md hover:bg-white/10 transition-all group">
               <RefreshCw size={14} className="text-zinc-500 group-hover:rotate-180 transition-transform duration-500" /> Neural Ideation

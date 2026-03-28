@@ -70,43 +70,52 @@ async def gen_readme(project_id: str):
 
 @app.post("/brainstorm")
 async def brainstorm(req: dict):
-    system = """You are a visionary Silicon Valley Founder and elite Systems Architect. Your objective is not merely to mix the provided domains/projects together, but to invent ONE revolutionary, razor-sharp technical product that solves ONE extremely specific, devastating market failure or developer pain point within those intersected domains.
-    Do NOT output generic productivity tools or vague amalgamations. Find the bleeding edge where these fields overlap and build a weaponized startup concept there.
+    is_regen = req.get("is_regeneration", False)
+    
+    pivot_instruction = ""
+    if is_regen:
+        pivot_instruction = "CRITICAL: This is a REGENERATION. You MUST PIVOT. Do not refine the previous idea. Invent a completely different technical product that uses a different intersection of these domains. If the previous was a SaaS, make this a low-level CLI tool, an Edge-computing layer, or a decentralized protocol."
+
+    system = f"""You are a visionary Silicon Valley Founder and elite Systems Architect. Your objective is not merely to mix the provided domains together, but to invent ONE revolutionary, technically-dense product that solves ONE hyper-specific market failure.
+    {pivot_instruction}
+    
+    Your response MUST be architecturally credible. Mention specific data structures, specific API patterns (gRPC, Webhooks, CDC), and deployment strategies. No fluff. 
 
     Your response MUST follow this EXACT structure in clean plain text (NO markdown symbols, NO asterisks, NO hashtags, NO backticks):
 
     PROJECT NAME: [A punchy, memorable name]
 
-    THE PROBLEM: [Identify ONE highly specific, painful problem in the industry today, explained in 1-2 sentences]
+    THE PROBLEM: [Identify ONE highly specific, painful industrial or developer problem, explained in 2 sentences]
 
-    THE SOLUTION: [How this new product elegantly solves that exact problem using the provided domains, explained in 1-2 sentences]
+    THE SOLUTION: [The radical technical mechanism you've invented to solve it, explained in 2-3 sentences]
 
-    TECH STACK: [List the exact modern frameworks, libraries, databases, and APIs to use]
+    PROPRIETARY ARCHITECTURE: [Explain the lower-level technical logic. How does the data move? What is the core algorithm or infrastructure choice that makes this superior?]
 
-    MVP CRITICAL PATH (the absolute minimum subset of 4-5 features required to demonstrate radical value):
+    TECH STACK: [List exact modern frameworks, libraries, and infrastructure]
+
+    MVP CRITICAL PATH:
     1. [Feature: Technical execution detail]
     2. [Feature: Technical execution detail]
-    ...
+    3. [Feature: Technical execution detail]
+    4. [Feature: Technical execution detail]
 
     CREATION ROADMAP:
-    Week 1: [Exact low-level architectural tasks]
-    Week 2: [Exact core logic tasks]
-    Week 3: [Exact integration & polish tasks]
+    Week 1: [Core engine & data model setup]
+    Week 2: [Functional logic & integration]
+    Week 3: [Security & production hardening]
 
-    Be brutally specific. A senior engineer should read this and involuntarily say "I need to build this immediately." """
+    Be brutally technical. A senior engineer should find this inspiring. """
     
     salts = [
         "Include a decentralized or peer-to-peer element.",
-        "Make it an exact command-line interface tool first.",
-        "Assume the data volume is massively real-time with websockets.",
-        "Target the enterprise B2B sector with highly strict compliance features.",
-        "Target solo creators needing an insanely fast drag-and-drop UX.",
-        "Use edge computing to make the latency unthinkably low.",
-        "Assume the primary interface is Voice or an AI agent, not a dashboard."
+        "Target the enterprise B2B sector with strict compliance (HIPAA/GDPR) needs.",
+        "Architect for massive real-time concurrency using WebSockets or Change Data Capture (CDC).",
+        "Make it an edge-first tool using WASM or Cloudflare Workers.",
+        "Primary interface must be an AI Agent or CLI, not a standard UI.",
     ]
     chaos_salt = random.choice(salts)
     
-    user = f"Domains to combine: {req['domains']}\nExisting Projects for inspiration: {req['project_names']}\n\nCHAOS CONSTRAINT: {chaos_salt}"
+    user = f"Domains: {req['domains']}\nProjects for Context: {req['project_names']}\n\nCHAOS CONSTRAINT: {chaos_salt}"
     
     chat_completion = client.chat.completions.create(
         messages=[
@@ -122,13 +131,13 @@ async def brainstorm(req: dict):
 @app.post("/synergy")
 async def synergy(req: dict):
     system = """You are 'The Genesis Engine', an elite AI Product Strategist and Systems Architect. 
-Your goal is not just to naively merge two distinct GitHub repositories, but to extract their underlying conceptual DNA to solve ONE devastatingly specific, highly painful problem in the developer or consumer market. 
-Invent a completely novel, world-class tool or SaaS startup that could ONLY exist because these two specific architectures were smashed together.
+Your goal is to extract the structural DNA of two codebases and physically lock them together to solve a hyper-specific market pain point.
+Invent a completely novel tool that could ONLY exist by merging these two specific architectures.
 
-You MUST respond strictly in valid JSON format with exactly these three keys:
-1. "name": A sleek, punchy 1-3 word name for this revolutionary new project.
-2. "pitch": A brilliant 2-sentence elevator pitch. Sentence 1 defines the exact, hyper-specific problem. Sentence 2 defines the radical solution derived from the input repos.
-3. "architecture": A dense, technical 3-paragraph blueprint explaining how the two tech stacks and codebases physically lock together to form the MVP. Focus on data flow, APIs, and the "magic" underlying mechanism. MUST BE A SINGLE FLAT STRING. DO NOT USE NESTED JSON OBJECTS.
+You MUST respond strictly in valid JSON format with exactly these points:
+1. "name": A sleek, punchy 1-3 word name.
+2. "pitch": A brilliant 2-sentence elevator pitch focus on the 'Unfair Advantage'.
+3. "architecture": A dense, technical 3-paragraph blueprint. Paragraph 1: The 'Data Core' (how state is managed). Paragraph 2: The 'Mechanism' (how stack A and B interact). Paragraph 3: The 'Production Shield' (security and scalability). MUST BE A SINGLE FLAT STRING. DO NOT USE NESTED JSON OBJECTS.
 
 DO NOT output any markdown blocks (No ```json), just raw JSON data."""
     
@@ -136,16 +145,14 @@ DO NOT output any markdown blocks (No ```json), just raw JSON data."""
     pB = req.get("project_b", {})
     
     salts = [
-        "Integrate a gamification mechanic or reputation system into the core loop.",
-        "Assume the application must run entirely offline first via local-first sync protocols.",
-        "The architecture must explicitly feature a graph database for hyper-relational querying.",
-        "Target extreme security researchers as the primary audience.",
-        "Build this as an SDK that other developers implement, rather than a standalone app.",
-        "The tool should actively destroy or prune bad/legacy data rather than just store it."
+        "Include local-first sync or CRDT architectures.",
+        "The architecture must feature a graph database for hyper-relational querying.",
+        "Focus on extreme low-level security (Kernel-level or TEE / Enclave logic).",
+        "Target solo creators needing an insanely fast, automated backend generation.",
     ]
     chaos_salt = random.choice(salts)
     
-    user = f"Project A Name: {pA.get('name')}\nProject A Domains: {pA.get('domains')}\nProject A README snippet: {pA.get('readme')[:500]}\n\nProject B Name: {pB.get('name')}\nProject B Domains: {pB.get('domains')}\nProject B README snippet: {pB.get('readme')[:500]}\n\nCHAOS CONSTRAINT: {chaos_salt}"
+    user = f"Project A ({pA.get('name')}): {pA.get('domains')}\nProject B ({pB.get('name')}): {pB.get('domains')}\n\nCHAOS CONSTRAINT: {chaos_salt}"
     
     chat_completion = client.chat.completions.create(
         messages=[
@@ -165,4 +172,5 @@ DO NOT output any markdown blocks (No ```json), just raw JSON data."""
         return {"name": "Synthesis Error", "pitch": "The engine failed to harmonize the domains.", "architecture": str(e)}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Change 8000 to 7860
+    uvicorn.run(app, host="0.0.0.0", port=7860)

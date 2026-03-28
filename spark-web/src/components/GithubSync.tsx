@@ -118,20 +118,21 @@ export function useGithubResync() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { setSyncing(false); return }
     const token = session.provider_token
-    if (!token) { toast('No GitHub token. Sign in with GitHub first.', 'error'); setSyncing(false); return }
+    
+    if (!token) {
+       toast('GitHub connection required for syncing.', 'info');
+       setSyncing(false);
+       return;
+    }
 
     const username = session.user.user_metadata?.user_name || session.user.user_metadata?.preferred_username || ''
 
     try {
       const allRepos = await fetchAllRepos(token, username)
-
-      const { data: existing } = await supabase.from('projects')
-        .select('github_link, id')
-        .eq('user_id', session.user.id)
+      const { data: existing } = await supabase.from('projects').select('github_link, id').eq('user_id', session.user.id)
       const existingLinks = new Map((existing || []).map(p => [p.github_link, p.id]))
 
       let added = 0, updated = 0
-
       for (const { repo, type } of allRepos) {
         const { readmeContent, languages } = await fetchReadmeAndLangs(repo.full_name, token)
 
@@ -140,8 +141,7 @@ export function useGithubResync() {
             readme: readmeContent,
             languages,
             repo_type: type,
-          }).eq('id', existingLinks.get(repo.html_url))
-            .eq('user_id', session.user.id)
+          }).eq('id', existingLinks.get(repo.html_url)).eq('user_id', session.user.id)
           updated++
         } else {
           await supabase.from('projects').insert({
@@ -158,18 +158,27 @@ export function useGithubResync() {
       }
       setSyncResult({ added, updated })
     } catch (e) {
-      toast('GitHub sync failed. Make sure you signed in with GitHub.', 'error')
+      toast('GitHub sync failed. Check your GitHub permissions.', 'error')
     }
     setSyncing(false)
   }
 
-  return { syncing, resync, syncResult }
+  const connectGithub = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'github',
+      options: { redirectTo: window.location.origin + '/auth/callback' }
+    })
+  }
+
+  return { syncing, resync, syncResult, connectGithub }
 }
 
 export default function GithubSync() {
   const [show, setShow] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [hasToken, setHasToken] = useState(true)
   const { toast } = useToast()
+  const { connectGithub } = useGithubResync()
 
   useEffect(() => {
     async function check() {
@@ -179,8 +188,8 @@ export default function GithubSync() {
 
       const providers = user.app_metadata?.providers || []
       const hasGithub = providers.includes('github')
-
       if (hasGithub) {
+        setHasToken(!!session?.provider_token)
         const { count } = await supabase.from('projects')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', user.id)
@@ -195,7 +204,11 @@ export default function GithubSync() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { setLoading(false); return }
     const token = session.provider_token
-    if (!token) { toast('No GitHub token available.', 'error'); setLoading(false); return }
+    
+    if (!token) {
+      await connectGithub()
+      return
+    }
 
     const username = session.user.user_metadata?.user_name || session.user.user_metadata?.preferred_username || ''
 
@@ -236,8 +249,12 @@ export default function GithubSync() {
               <Zap className="text-indigo-400" size={24} strokeWidth={1.5} />
             </div>
 
-            <h2 className="text-2xl font-medium text-white tracking-tight smooth-text mb-3 relative z-10">Initialize Constellation</h2>
-            <p className="text-sm font-light text-zinc-400 mb-8 relative z-10">We detected your GitHub account. Sync all your repositories — owned, forked, starred, and contributed — into your workspace?</p>
+            <h2 className="text-2xl font-medium text-white tracking-tight smooth-text mb-3 relative z-10">{hasToken ? 'Initialize Constellation' : 'Connect GitHub'}</h2>
+            <p className="text-sm font-light text-zinc-400 mb-8 relative z-10">
+              {hasToken 
+                ? 'We detected your GitHub account. Sync all your repositories into your workspace?'
+                : "Your GitHub account isn't fully connected yet. Link it now to sync your projects."}
+            </p>
 
             <div className="flex flex-col gap-3 w-full">
               <button
@@ -245,7 +262,7 @@ export default function GithubSync() {
                 disabled={loading}
                 className="w-full py-3.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 rounded-full font-medium text-sm flex items-center justify-center gap-3 transition-all border border-indigo-500/30 backdrop-blur-md relative z-10"
               >
-                {loading ? <Loader2 className="animate-spin text-indigo-400" size={18}/> : 'Yes, Sync All Projects'}
+                {loading ? <Loader2 className="animate-spin text-indigo-400" size={18}/> : (hasToken ? 'Yes, Sync All Projects' : 'Connect GitHub & Sync')}
               </button>
               <button
                 onClick={() => setShow(false)}

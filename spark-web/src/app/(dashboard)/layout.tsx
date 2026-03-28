@@ -123,11 +123,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <div className="flex items-center gap-4">
-          <form action="/auth/signout" method="post">
-            <button className="text-xs text-zinc-500 hover:text-red-400 transition-colors flex items-center gap-2 group p-2">
-              <LogOut size={18} strokeWidth={1.5} className="group-hover:-translate-x-1 transition-transform" />
-            </button>
-          </form>
+          <button 
+            onClick={async () => {
+              await supabase.auth.signOut()
+              window.location.href = '/login'
+            }}
+            className="text-xs text-zinc-500 hover:text-red-400 transition-colors flex items-center gap-2 group p-2"
+          >
+            <LogOut size={18} strokeWidth={1.5} className="group-hover:-translate-x-1 transition-transform" />
+          </button>
 
           <Link href="/profile" className="relative group">
             <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 p-0.5 shadow-xl shadow-black/20 overflow-hidden backdrop-blur-md hover:scale-105 transition-transform active:scale-95 border-indigo-500/30">

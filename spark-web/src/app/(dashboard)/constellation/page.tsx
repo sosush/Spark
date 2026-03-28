@@ -32,19 +32,31 @@ export default function ConstellationPage() {
   const [loading, setLoading] = useState(false)
   const fgRef = useRef<any>(null)
   const supabase = createClient()
+  const [filter, setFilter] = useState<'all' | 'personal' | 'forked' | 'contributed'>('all')
+  const [rawProjects, setRawProjects] = useState<any[]>([])
   const { toast } = useToast()
 
   const fetchGraph = useCallback(async () => {
-    // SECURITY FIX: Filter by user_id
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return
 
     const { data: projs } = await supabase.from('projects')
-      .select('id, name, domains, readme')
+      .select('id, name, domains, readme, repo_type')
       .eq('user_id', session.user.id)
       
     if (!projs) return
-    const nodes = projs.map(p => ({ id: p.id, name: p.name, domains: p.domains || [], val: 3 + (p.domains?.length || 0) * 2 }))
+    setRawProjects(projs)
+  }, [supabase])
+
+  useEffect(() => {
+    const projs = filter === 'all' ? rawProjects : rawProjects.filter(p => p.repo_type === filter)
+    const nodes = projs.map(p => ({ 
+      id: p.id, 
+      name: p.name, 
+      domains: p.domains || [], 
+      val: 3 + (p.domains?.length || 0) * 2,
+      type: p.repo_type || 'personal'
+    }))
     const links: any[] = []
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
@@ -53,7 +65,7 @@ export default function ConstellationPage() {
       }
     }
     setData({ nodes, links })
-  }, [supabase])
+  }, [rawProjects, filter])
 
   useEffect(() => { fetchGraph() }, [fetchGraph])
 
@@ -72,14 +84,18 @@ export default function ConstellationPage() {
     }
   }, [data])
 
-  const startCollision = async () => {
+  const startCollision = async (is_regen = false) => {
     setLoading(true)
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
     try {
       const res = await fetch(`${backendUrl}/brainstorm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domains: selectedDomains, project_names: data.nodes.map((n:any) => n.name) })
+        body: JSON.stringify({ 
+          domains: selectedDomains, 
+          project_names: data.nodes.map((n:any) => n.name),
+          is_regeneration: is_regen 
+        })
       })
       const result = await res.json()
       setIdeaResult(result.idea)
@@ -137,179 +153,171 @@ export default function ConstellationPage() {
   return (
     <div className="relative w-full" style={{ height: 'calc(100vh - 16rem)' }}>
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative w-full h-full bg-[#030308] rounded-[2.5rem] overflow-hidden border border-white/5 shadow-2xl">
-        <GithubSync />
-        
-        <ForceGraph3D
-          ref={fgRef}
-          graphData={data}
-          backgroundColor="#030308"
-          nodeRelSize={10}
-          nodeResolution={32}
-          nodeOpacity={1}
-          nodeVal={(node: any) => node.val || 4}
-          nodeLabel={(node: any) => node.name}
-          onNodeClick={handleNodeClick}
-          nodeThreeObject={(node: any) => {
-            const THREE = require('three')
-            const group = new THREE.Group()
-            const isSynergySelected = synergyNodes.find(n => n.id === node.id)
-            const color = isSynergySelected ? "#FCD34D" : "#818CF8" // Amber if selected, else purple
-            
-            // Core sphere — solid, bright
-            const coreMat = new THREE.MeshPhongMaterial({
-              color: color,
-              emissive: color,
-              emissiveIntensity: 0.8,
-              shininess: 100,
-              transparent: true,
-              opacity: 0.95
-            })
-            const coreGeo = new THREE.SphereGeometry(7, 32, 32)
-            const core = new THREE.Mesh(coreGeo, coreMat)
-            group.add(core)
+        {/* 1. NEURAL MAP ENGINE */}
+        <div className="flex-1 h-full relative">
+          {/* Floating Filter Controls */}
+          <div className="absolute top-8 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 p-1 bg-black/40 border border-white/10 rounded-full backdrop-blur-xl shadow-2xl">
+            {[
+              { id: 'all', label: 'All Projects' },
+              { id: 'personal', label: 'Personal' },
+              { id: 'forked', label: 'Forked' },
+              { id: 'contributed', label: 'Contributed' }
+            ].map((btn) => (
+              <button
+                key={btn.id}
+                onClick={() => setFilter(btn.id as any)}
+                className={`px-6 py-2 rounded-full text-[11px] font-medium transition-all uppercase tracking-widest ${
+                  filter === btn.id 
+                    ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shadow-[0_0_20px_rgba(99,102,241,0.2)]' 
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                {btn.label}
+              </button>
+            ))}
+          </div>
 
-            // Outer halo — glowing ring
-            const haloMat = new THREE.MeshBasicMaterial({
-              color: color,
-              transparent: true,
-              opacity: 0.25,
-              blending: THREE.AdditiveBlending,
-              depthWrite: false
-            })
-            const haloGeo = new THREE.SphereGeometry(13, 32, 32)
-            const halo = new THREE.Mesh(haloGeo, haloMat)
-            group.add(halo)
+          <ForceGraph3D
+            ref={fgRef}
+            graphData={data}
+            backgroundColor="#030308"
+            nodeRelSize={10}
+            nodeResolution={32}
+            nodeOpacity={1}
+            nodeVal={(node: any) => node.val || 4}
+            nodeLabel={(node: any) => node.name}
+            onNodeClick={handleNodeClick}
+            nodeThreeObject={(node: any) => {
+              const THREE = require('three')
+              const group = new THREE.Group()
+              const isSynergySelected = synergyNodes.find(n => n.id === node.id)
+              const color = isSynergySelected ? "#FCD34D" : (node.type === 'personal' ? "#818CF8" : node.type === 'forked' ? "#22d3ee" : "#fb7185")
+              
+              const coreMat = new THREE.MeshPhongMaterial({
+                color: color,
+                emissive: color,
+                emissiveIntensity: 0.8,
+                shininess: 100,
+                transparent: true,
+                opacity: 0.95
+              })
+              const coreGeo = new THREE.SphereGeometry(7, 32, 32)
+              const core = new THREE.Mesh(coreGeo, coreMat)
+              group.add(core)
 
-            // Store ref for pulsation
-            ;(node as any).__halo = halo
-            ;(node as any).__core = core
-            ;(node as any).__phase = Math.random() * Math.PI * 2
+              const haloMat = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.25,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+              })
+              const haloGeo = new THREE.SphereGeometry(13, 32, 32)
+              const halo = new THREE.Mesh(haloGeo, haloMat)
+              group.add(halo)
 
-            return group
-          }}
-          nodeThreeObjectExtend={false}
-          onEngineTick={() => {
-            const t = Date.now() * 0.003
-            data.nodes.forEach((node: any) => {
-              if (node.__halo) {
-                const pulse = 1.0 + 0.35 * Math.sin(t + (node.__phase || 0))
-                node.__halo.scale.set(pulse, pulse, pulse)
-                node.__halo.material.opacity = 0.15 + 0.12 * Math.sin(t + (node.__phase || 0))
-              }
-              // Bounding box logic to keep clusters from flying away endlessly
-              const r = Math.hypot(node.x || 0, node.y || 0, node.z || 0)
-              if (r > 400) {
-                const force = (r - 400) * 0.015
-                node.vx -= (node.x / r) * force
-                node.vy -= (node.y / r) * force
-                node.vz -= (node.z / r) * force
-              }
-            })
-          }}
-          linkColor={() => 'rgba(255, 255, 255, 0.4)'}
-          linkWidth={(link: any) => Math.min(0.5 + (link.strength || 1) * 0.5, 2.5)}
-          linkDirectionalParticles={6}
-          linkDirectionalParticleWidth={1.8}
-          linkDirectionalParticleSpeed={0.003}
-          linkDirectionalParticleColor={() => "#ffffff"}
-          linkCurvature={0}
-          linkOpacity={0.5}
-          linkLabel={(link: any) => `Shared: ${link.shared.join(', ')}`}
-          warmupTicks={80}
-          cooldownTicks={200}
-          d3AlphaDecay={0.01}
-          d3VelocityDecay={0.15}
-          d3AlphaMin={0.001}
-          enableNodeDrag={true}
-          enableNavigationControls={true}
-        />
+              ;(node as any).__halo = halo
+              ;(node as any).__core = core
+              ;(node as any).__phase = Math.random() * Math.PI * 2
+              return group
+            }}
+            nodeThreeObjectExtend={false}
+            onEngineTick={() => {
+              const t = Date.now() * 0.003
+              data.nodes.forEach((node: any) => {
+                if (node.__halo) {
+                  const pulse = 1.0 + 0.35 * Math.sin(t + (node.__phase || 0))
+                  node.__halo.scale.set(pulse, pulse, pulse)
+                  node.__halo.material.opacity = 0.15 + 0.12 * Math.sin(t + (node.__phase || 0))
+                }
+              })
+            }}
+            linkColor={() => 'rgba(255, 255, 255, 0.4)'}
+            linkWidth={(link: any) => Math.min(0.5 + (link.strength || 1) * 0.5, 2.5)}
+            linkDirectionalParticles={6}
+            linkDirectionalParticleWidth={1.8}
+            linkDirectionalParticleSpeed={0.003}
+            linkDirectionalParticleColor={() => "#ffffff"}
+            linkCurvature={0}
+            linkOpacity={0.5}
+            warmupTicks={80}
+            cooldownTicks={200}
+            enableNodeDrag={true}
+            enableNavigationControls={true}
+          />
 
-        {/* Title overlay */}
-        <div className="absolute top-8 left-8 text-white z-10 pointer-events-none">
-          <h1 className="text-2xl font-medium tracking-tight smooth-text mb-1">Network</h1>
-          <p className="text-xs text-zinc-400 font-light">Interactive constellation of your project domains</p>
+          {/* Overlays */}
+          <div className="absolute top-8 left-8 text-white z-10 pointer-events-none">
+            <h1 className="text-2xl font-medium tracking-tight smooth-text mb-1 italic" style={{ fontFamily: 'var(--font-caveat)' }}>Constellation Map</h1>
+            <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">{filter} PROJECTS ACTIVE</p>
+          </div>
+
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 z-40">
+            <button onClick={() => setShowBrainstorm(true)} className="px-8 py-4 bg-white/5 border border-white/10 text-white rounded-full font-medium text-[11px] uppercase tracking-widest flex items-center gap-3 backdrop-blur-md hover:bg-white/10 transition-all group">
+              <RefreshCw size={14} className="text-zinc-500 group-hover:rotate-180 transition-transform duration-500" /> Neural Ideation
+            </button>
+            <button onClick={() => { setSynergyMode(true); setSynergyNodes([]) }} className="px-8 py-4 bg-amber-500/10 text-amber-200 rounded-full font-medium text-[11px] uppercase tracking-widest flex items-center gap-3 backdrop-blur-md border border-amber-500/30 hover:bg-amber-500/20 transition-all shadow-[0_0_30px_rgba(245,158,11,0.2)]">
+              <SparkLogo size={14} className="text-amber-400" /> Genesis Engine
+            </button>
+          </div>
         </div>
 
-        {/* Node count badge */}
-        <div className="absolute top-8 right-8 z-10 pointer-events-none ethereal-pill px-4 py-2 text-xs text-zinc-300 font-medium">
-          {data.nodes.length} nodes · {data.links.length} connections
-        </div>
-
-        {/* Synergy Mode overlay banner */}
-        <AnimatePresence>
-          {synergyMode && (
-            <motion.div initial={{ y: -50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -50, opacity: 0 }} className="absolute top-8 left-1/2 -translate-x-1/2 z-20">
-              <div className="ethereal-pill px-8 py-3 bg-amber-500/20 border-amber-500/30 backdrop-blur-md flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></div>
-                <span className="text-amber-200 font-medium text-sm tracking-wide uppercase">Select exactly two nodes to collide ({synergyNodes.length}/2)</span>
-                <button onClick={() => { setSynergyMode(false); setSynergyNodes([]) }} className="ml-4 text-amber-200/50 hover:text-amber-200"><X size={16}/></button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Action Buttons */}
-        <div className="absolute bottom-6 right-6 flex flex-col gap-4 z-20">
-          <button onClick={() => { fgRef.current?.cameraPosition({ x: 0, y: 0, z: 250 }, {x:0, y:0, z:0}, 2000) }} className="w-12 h-12 bg-white/5 border border-white/10 text-white rounded-full flex items-center justify-center backdrop-blur-md hover:bg-white/10 transition-all shadow-lg" title="Recenter View">
-            <Target size={20} className="text-zinc-400 hover:text-white" />
-          </button>
-        </div>
-
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 z-20">
-          <button onClick={() => setShowBrainstorm(true)} className="px-6 py-4 bg-white/5 border border-white/10 text-white rounded-full font-medium text-sm flex items-center gap-3 backdrop-blur-md hover:bg-white/10 transition-all">
-            <RefreshCw size={16} className="text-zinc-400" /> General Brainstorm
-          </button>
-          
-          <button onClick={() => { setSynergyMode(true); setSynergyNodes([]) }} className="px-8 py-4 bg-amber-500/10 text-amber-200 rounded-full font-medium text-sm flex items-center gap-3 backdrop-blur-md border border-amber-500/30 hover:bg-amber-500/20 transition-all shadow-[0_0_30px_rgba(245,158,11,0.2)] hover:shadow-[0_0_50px_rgba(245,158,11,0.4)]">
-            <SparkLogo size={18} className="text-amber-300" /> Genesis Engine
-          </button>
-        </div>
-
+        {/* Neural Ideation (Brainstorm) Modal */}
         <AnimatePresence>
           {showBrainstorm && (
-            <div className="fixed inset-0 bg-[#09090B]/80 backdrop-blur-xl z-[150] flex items-center justify-center p-6">
-              <motion.div 
-                initial={{ y: 20, opacity: 0, scale: 0.95 }} 
-                animate={{ y: 0, opacity: 1, scale: 1 }}
-                exit={{ y: 20, opacity: 0, scale: 0.95 }}
-                className="max-w-2xl w-full ethereal-island p-12 relative overflow-y-auto max-h-[85vh] scrollbar-hide"
-              >
-                <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-[80px] opacity-40 mix-blend-screen pointer-events-none" />
+            <div className="fixed inset-0 bg-black/95 backdrop-blur-2xl z-[100] flex items-center justify-center p-6">
+              <motion.div initial={{ y: 20, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 20, opacity: 0, scale: 0.95 }} className="max-w-4xl w-full ethereal-island relative border-indigo-500/20 p-0 overflow-hidden">
+                <div className="absolute top-0 right-0 w-full h-64 bg-indigo-500/10 rounded-b-full blur-[100px] opacity-40 mix-blend-screen pointer-events-none" />
+                <button onClick={() => { setShowBrainstorm(false); setIdeaResult(null); setSelectedDomains([]) }} className="absolute top-8 right-8 w-10 h-10 flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-zinc-500 hover:text-white transition-colors z-20"><X size={18}/></button>
 
-                <button onClick={() => setShowBrainstorm(false)} className="absolute top-8 right-8 w-10 h-10 flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-zinc-400 hover:text-white transition-colors backdrop-blur-md z-10"><X size={18}/></button>
-                
-                <h2 className="text-3xl font-medium text-white tracking-tight smooth-text mb-2 relative z-10">Neural Combination</h2>
-                <p className="text-sm font-light text-zinc-400 mb-8 relative z-10">Select domains to collide with your existing active nodes.</p>
-                
-                <div className="flex flex-wrap gap-2 mb-10 relative z-10">
-                  {DOMAINS.map((d: string) => (
-                    <button key={d} onClick={() => setSelectedDomains(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])}
-                      className={`px-4 py-2 rounded-full text-xs font-medium border transition-all backdrop-blur-md ${selectedDomains.includes(d) ? 'bg-amber-500/20 border-amber-500/30 text-amber-200' : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white'}`}>{d}</button>
-                  ))}
-                </div>
-
-                {ideaResult && (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-8 bg-white/5 border border-white/10 rounded-3xl mb-8 text-zinc-300 font-light text-sm leading-relaxed whitespace-pre-wrap backdrop-blur-md relative z-10 shadow-inner">
-                    {ideaResult}
-                  </motion.div>
-                )}
-
-                <div className="flex gap-4 relative z-10 mt-12">
-                  <button onClick={startCollision} disabled={loading} className="flex-1 py-4 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full font-medium flex items-center justify-center gap-3 transition-all text-sm backdrop-blur-md">
-                    {loading ? <Loader2 className="animate-spin text-amber-200" size={18}/> : <RefreshCw size={18} className="text-zinc-400"/>} 
-                    {ideaResult ? 'Regenerate Concept' : 'Synthesize'}
-                  </button>
-                  {ideaResult && (
-                    <button onClick={async () => {
-                        const { data: { session } } = await supabase.auth.getSession()
-                        if (session) {
-                          await supabase.from('nodes').insert({ user_id: session.user.id, title: "Lab Idea", content: ideaResult })
-                          toast('Idea saved to Laboratory', 'success')
-                          setShowBrainstorm(false)
-                        }
-                    }} className="px-8 py-4 bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 rounded-full font-medium flex items-center gap-2 shadow-xl transition-all backdrop-blur-md">
-                      <PlusCircle size={18} strokeWidth={1.5}/> Save to Lab
-                    </button>
+                <div className="relative z-10 p-12 max-h-[85vh] overflow-y-auto scrollbar-hide">
+                  {!ideaResult ? (
+                    <div className="space-y-10">
+                      <div className="text-center space-y-4">
+                        <div className="flex items-center justify-center gap-3 mb-2">
+                          <SparkLogo size={32} className="text-indigo-400 shadow-[0_0_20px_rgba(129,140,248,0.5)]" />
+                          <span className="text-indigo-300 uppercase tracking-[0.5em] text-[10px] font-bold">Neural Ideation</span>
+                        </div>
+                        <h2 className="text-4xl font-medium tracking-tight text-white italic" style={{ fontFamily: 'var(--font-caveat)' }}>Identify Your Focus Domains</h2>
+                      </div>
+                      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                        {DOMAINS.map((domain) => (
+                          <button key={domain} onClick={() => {
+                            if (selectedDomains.includes(domain)) setSelectedDomains(prev => prev.filter(d => d !== domain))
+                            else if (selectedDomains.length < 3) setSelectedDomains(prev => [...prev, domain])
+                          }} className={`p-4 rounded-2xl border text-[10px] font-bold transition-all text-center uppercase tracking-widest ${
+                            selectedDomains.includes(domain) ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300 shadow-[0_0_20px_rgba(99,102,241,0.2)]' : 'bg-white/5 border-white/5 text-zinc-600 hover:text-zinc-400'
+                          }`}>{domain}</button>
+                        ))}
+                      </div>
+                      <div className="flex justify-center pt-6">
+                        <button onClick={() => startCollision(false)} disabled={selectedDomains.length === 0 || loading} className="px-12 py-5 bg-white text-zinc-950 hover:bg-zinc-200 disabled:opacity-30 rounded-full font-bold flex items-center gap-3 transition-all">
+                          {loading ? <Loader2 className="animate-spin" size={20}/> : <Target size={20} strokeWidth={2.5}/>} 
+                          {loading ? 'SYNTHeSIZING...' : 'INITIALIZE GENESIS'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-8">
+                      <div className="flex justify-between items-center mb-8 border-b border-white/5 pb-8">
+                         <div className="flex items-center gap-3"><SparkLogo size={24} className="text-indigo-400"/><span className="text-indigo-300 uppercase tracking-[0.3em] text-[10px] font-bold">Neural Synthesis Result</span></div>
+                         <button onClick={() => startCollision(true)} disabled={loading} className="flex items-center gap-2 text-zinc-500 hover:text-indigo-400 text-[10px] font-bold uppercase tracking-widest transition-colors">
+                           <RefreshCw size={14} className={loading ? 'animate-spin' : ''}/> Pivot Concept
+                         </button>
+                      </div>
+                      <div className="text-zinc-300 font-light text-sm leading-loose whitespace-pre-wrap">{ideaResult}</div>
+                      <div className="flex justify-center pt-8 border-t border-white/5">
+                        <button onClick={async () => {
+                           const { data: { session } } = await supabase.auth.getSession()
+                           if (session && ideaResult) {
+                              const name = ideaResult.includes('NAME:') ? ideaResult.split('\n')[0].replace('PROJECT NAME:', '').trim() : 'AI Concept'
+                              await supabase.from('nodes').insert({ user_id: session.user.id, title: name, content: ideaResult })
+                              toast('Concept archived in Laboratory', 'success')
+                              setShowBrainstorm(false)
+                           }
+                        }} className="px-12 py-5 bg-indigo-500 text-white hover:bg-indigo-400 rounded-full font-bold flex items-center gap-3 transition-all shadow-[0_10px_30px_rgba(99,102,241,0.3)]">Archive in Lab Incubator</button>
+                      </div>
+                    </div>
                   )}
                 </div>
               </motion.div>
@@ -317,80 +325,54 @@ export default function ConstellationPage() {
           )}
         </AnimatePresence>
 
-        {/* The Genesis Engine Synergy Modal */}
+        {/* Synergy Modal (Genesis Engine) */}
         <AnimatePresence>
           {showSynergyModal && (
-            <div className="fixed inset-0 bg-[#09090B]/90 backdrop-blur-2xl z-[200] flex items-center justify-center p-6">
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95, y: 30 }} 
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 30 }}
-                className="max-w-3xl w-full ethereal-island relative border-amber-500/20 p-0 overflow-hidden"
-              >
+            <div className="fixed inset-0 bg-black/95 backdrop-blur-2xl z-[200] flex items-center justify-center p-6">
+              <motion.div initial={{ opacity: 0, scale: 0.95, y: 30 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 30 }} className="max-w-3xl w-full ethereal-island relative border-amber-500/20 p-0 overflow-hidden">
                 <div className="absolute top-0 right-0 w-full h-64 bg-amber-500/10 rounded-b-full blur-[100px] opacity-40 mix-blend-screen pointer-events-none" />
-                
-                <button onClick={() => { setShowSynergyModal(false); setSynergyNodes([]) }} className="absolute top-6 right-6 w-10 h-10 flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-zinc-400 hover:text-white transition-colors backdrop-blur-md z-20"><X size={18}/></button>
+                <button onClick={() => { setShowSynergyModal(false); setSynergyNodes([]) }} className="absolute top-8 right-8 w-10 h-10 flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-zinc-500 hover:text-white transition-colors z-20"><X size={18}/></button>
 
-                <div className="relative z-10 p-12 max-h-[85vh] overflow-y-auto scrollbar-hide">
-                  <div className="flex items-center justify-center gap-3 mb-8">
-                    <SparkLogo size={24} className="text-amber-400" />
-                    <span className="text-amber-300/80 uppercase tracking-[0.3em] text-xs font-bold">Genesis Engine Output</span>
+                <div className="relative z-10 p-12 max-h-[85vh] overflow-y-auto scrollbar-hide text-center">
+                  <div className="flex items-center justify-center gap-3 mb-4">
+                    <SparkLogo size={32} className="text-amber-400" />
+                    <span className="text-amber-300 uppercase tracking-[0.5em] text-[10px] font-bold">Genesis Engine Synthesis</span>
                   </div>
 
                   {loading ? (
-                    <div className="py-20 flex flex-col items-center justify-center text-center space-y-6">
-                      <div className="relative">
-                        <div className="absolute inset-0 border-2 border-amber-500/30 rounded-full animate-ping"></div>
-                        <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
-                          <Hexagon className="text-amber-400 animate-spin-slow" size={24}/>
-                        </div>
-                      </div>
-                      <p className="text-amber-200/60 font-medium animate-pulse tracking-wide">Synthesizing Project DNA...</p>
+                    <div className="py-20 flex flex-col items-center justify-center space-y-6">
+                      <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center animate-pulse"><Hexagon className="text-amber-400 animate-spin-slow" size={24}/></div>
+                      <p className="text-amber-200/60 font-bold uppercase tracking-[0.2em] text-[10px] animate-pulse">Synthesizing Project DNA...</p>
                     </div>
                   ) : synergyResult ? (
-                    <div className="space-y-10">
+                    <div className="space-y-10 text-left">
                       <div className="text-center space-y-4">
-                        <h2 className="text-5xl font-medium tracking-tight bg-gradient-to-r from-amber-200 to-amber-500 text-transparent bg-clip-text" style={{ fontFamily: 'var(--font-caveat)' }}>
-                          {synergyResult.name}
-                        </h2>
-                        <p className="text-xl font-light text-zinc-300 leading-relaxed italic border-l-2 border-amber-500/30 pl-6 text-left shrink-0">
-                          {synergyResult.pitch}
-                        </p>
+                        <h2 className="text-5xl font-medium tracking-tight bg-gradient-to-r from-amber-200 to-amber-500 text-transparent bg-clip-text italic" style={{ fontFamily: 'var(--font-caveat)' }}>{synergyResult.name}</h2>
+                        <p className="text-lg font-light text-zinc-300 leading-relaxed italic border-l-2 border-amber-500/30 pl-6">{synergyResult.pitch}</p>
                       </div>
-
                       <div className="bg-black/20 p-8 border border-white/5 rounded-3xl">
-                        <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500 mb-4">Architecture Blueprint</h4>
-                        <div className="text-zinc-300 font-light text-sm leading-loose whitespace-pre-wrap">
-                          {typeof synergyResult.architecture === 'object' 
-                            ? JSON.stringify(synergyResult.architecture, null, 2)
-                            : synergyResult.architecture}
-                        </div>
+                        <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-zinc-500 mb-6">Structural DNA & Architecture</h4>
+                        <div className="text-zinc-300 font-light text-sm leading-loose whitespace-pre-wrap">{synergyResult.architecture}</div>
                       </div>
-
                       <div className="flex justify-center pt-4">
                         <button onClick={async () => {
                             const { data: { session } } = await supabase.auth.getSession()
-                            if (session) {
+                            if (session && synergyResult) {
                               const md = `# ${synergyResult.name}\n\n> ${synergyResult.pitch}\n\n## Architecture\n${synergyResult.architecture}`
                               await supabase.from('nodes').insert({ user_id: session.user.id, title: synergyResult.name, content: md })
-                              toast('Genesis Concept saved to Laboratory', 'success')
-                              setShowSynergyModal(false)
-                              setSynergyNodes([])
+                              toast('Genesis Concept archived', 'success'); setShowSynergyModal(false); setSynergyNodes([])
                             }
-                        }} className="px-10 py-5 bg-amber-500 text-zinc-950 hover:bg-amber-400 rounded-full font-medium flex items-center gap-3 transition-all shadow-[0_10px_40px_rgba(245,158,11,0.3)] hover:scale-105">
-                          <PlusCircle size={20} strokeWidth={2}/> Send to Lab Incubator
-                        </button>
+                        }} className="px-12 py-5 bg-amber-500 text-zinc-950 hover:bg-amber-400 rounded-full font-bold flex items-center gap-3 transition-all shadow-xl">Archiving Prototype</button>
                       </div>
                     </div>
-                  ) : (
-                    <div className="py-20 text-center text-rose-400">Synthesis calculation failed.</div>
-                  )}
+                  ) : <div className="py-20 text-rose-400 uppercase tracking-[0.2em] text-[10px] font-bold">Synthesis calculation aborted.</div>}
                 </div>
               </motion.div>
             </div>
           )}
         </AnimatePresence>
       </motion.div>
+      <GithubSync />
     </div>
   )
 }

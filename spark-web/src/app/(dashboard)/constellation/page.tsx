@@ -74,8 +74,9 @@ export default function ConstellationPage() {
 
   const startCollision = async () => {
     setLoading(true)
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
     try {
-      const res = await fetch('http://localhost:8000/brainstorm', {
+      const res = await fetch(`${API_URL}/brainstorm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ domains: selectedDomains, project_names: data.nodes.map((n:any) => n.name) })
@@ -90,8 +91,9 @@ export default function ConstellationPage() {
     setShowSynergyModal(true)
     setLoading(true)
     setSynergyResult(null)
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
     try {
-      const res = await fetch('http://localhost:8000/synergy', {
+      const res = await fetch(`${API_URL}/synergy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

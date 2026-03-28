@@ -248,8 +248,9 @@ export default function ProjectDeepDive({ params }: { params: Promise<{ id: stri
 
   const askAI = async (task: 'improve' | 'readme') => {
     setLoadingAi(task)
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
     try {
-      const res = await fetch(`http://localhost:8000/${task}/${id}`)
+      const res = await fetch(`${API_URL}/${task}/${id}`)
       const data = await res.json()
       const field = task === 'improve' ? 'ai_report' : 'readme'
       await supabase.from('projects').update({ [field]: data.result }).eq('id', id)
